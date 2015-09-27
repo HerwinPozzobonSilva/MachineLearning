@@ -1,0 +1,162 @@
+---
+title: "Johns Hopkins University - Practical Machine Learning Specialization"
+subtitle: "Predicting the manner in which people did exercises based on machine learning algorithms"
+author: "Herwin Pozzobon Silva"
+date: "26 de setembro de 2015"
+output: html_document
+---
+#Summary
+The goal of this project is to predict the manner in which people did exercises based on data collected from  http://groupware.les.inf.puc-rio.br/har. We will focus on the classification of each row of the testing set trying to define if it corresponds to a well done exercise (classe A) or to an incorrectly done (classe B to E).
+
+# Preparation
+###Cleaning the global environment
+
+```{r echo=TRUE, cache=FALSE,collapse=TRUE}
+rm(list=ls(envir = .GlobalEnv), envir = .GlobalEnv)
+gc()
+```
+###Loading packages
+```{r echo=TRUE, collapse=TRUE}
+pkg   <- c("diagram", "caret", "dplyr", "ggplot2")
+for (i in pkg) {
+   if(i %in% rownames(installed.packages()) == FALSE) install.packages(i, dependencies=TRUE)
+   library(i, character.only = TRUE)
+}
+```
+###Choosing and going to the project directory
+```{r echo=TRUE, collapse=TRUE}
+wdDir <- dirname(choose.dir(caption="Select the project folder:"))
+setwd(paste(wdDir, "\\PeerAssessment", sep = ""))
+```
+#Planning the Project
+###Framework proposed by the course
+```{r echo=FALSE, fig.width=7.5, fig.height=2.5, cache=FALSE, collapse=TRUE}
+names <- c("Question", "Input Data", "Features", "Algorithm", "Parameters", "Evaluation")
+m <- matrix(nrow=6, ncol=6, byrow=TRUE, data=0)
+m[2, 1] <- m[3, 2] <- m[4, 3] <- m[5, 4] <- m[6, 5] <- "."
+plotmat(m, pos=c(6), name=names, lwd = 1, box.lwd = 1, cex.txt = 0.8, box.size = 0.09, box.type = "multi", box.prop = 0.5, arr.type = "simple")
+```
+
+#Executing the project
+##Question
+As mentioned in the course assignement page, "the goal of the project is to predict the manner in which they did the exercise" and this must be made via the "classe" variable in the training set.
+
+We may establish that the question to answer may be: "**is it possible to predict if people did exercises correctly based on previous classification done by experts ?**"
+
+##Input data
+We assume the premise that the **training set** provided by the course web site is relevant, done by experts and the right data to use in this kind of prediction and that the **test set** was collected and organized according to that structure and criteria. 
+
+###Downloading and reading files
+```{r echo=TRUE, cache=TRUE, collapse=TRUE}
+url            <- "https://d396qusza40orc.cloudfront.net/predmachlearn/"
+training.file  <- "pml-training.csv"
+testing.file   <- "pml-testing.csv"
+
+if (!file.exists(training.file)) download.file(paste(url, training.file, sep=""), destfile=training.file)
+if (!file.exists(testing.file))  download.file(paste(url, testing.file,  sep=""), destfile=testing.file)
+
+training <- read.csv(training.file, header = TRUE, sep=",")
+testing  <- read.csv(testing.file,  header = TRUE, sep=",")
+```
+###Checking data sets
+####Checking the colum names
+Creating a logical vector to check if all columns have the same name (colCheck). As we can see, `r ncol(training)-1` columns have the same name (just one, the "classe" column is different):
+```{r echo=TRUE, collapse=TRUE}
+colCheck <- names(training)[1:length(training)] != names(testing)[1:length(testing)] 
+names(training)[colCheck == TRUE]       # the different columns in the training set
+names(testing) [colCheck == TRUE]       # the different columns in the testing set
+```
+
+####Removing columns without valid data in both sets
+
+```{r echo=TRUE, collapse=TRUE}
+training    <- training[,(colSums(is.na(training)) == 0)]
+testing     <- testing[,(colSums(is.na(testing)) == 0)]
+training    <- training[-3:-7]
+testing     <- testing [-3:-7]
+```
+##Features
+After the cleaning operation above, the data sets results with different number of columns. So, we must use the remaining columns of the testing data set in our model as we see below:
+```{r echo=TRUE, cache=FALSE, collapse=TRUE}
+dim(training)[2]; dim(testing)[2] # number of columns in both data sets
+names(testing)[3:dim(testing)[2]] # the columns to be used in the model
+```
+##Algorithm
+###Data partitioning
+```{r echo=TRUE, cache=FALSE, collapse=TRUE}
+inTrain        <- createDataPartition(y=training$classe, p=0.75, list = FALSE)
+training.train <- training[inTrain,]
+training.test  <- training[-inTrain,]
+```
+###Initial Model
+```{r echo=TRUE, cache=TRUE, collapse=TRUE}
+set.seed(32343)
+modelFit    <- train(classe ~ roll_belt + pitch_belt + yaw_belt + total_accel_belt + gyros_belt_x                                           + gyros_belt_y + gyros_belt_z + accel_belt_x + accel_belt_y + accel_belt_z 
+                             + magnet_belt_x + magnet_belt_y + magnet_belt_z + roll_arm + pitch_arm
+                             + yaw_arm + total_accel_arm + gyros_arm_x + gyros_arm_y + gyros_arm_z
+                             + accel_arm_x + accel_arm_y + accel_arm_z + magnet_arm_x + magnet_arm_y
+                             + magnet_arm_z + roll_dumbbell + pitch_dumbbell + yaw_dumbbell
+                             + total_accel_dumbbell + gyros_dumbbell_x + gyros_dumbbell_y
+                             + gyros_dumbbell_z + accel_dumbbell_x + accel_dumbbell_y + accel_dumbbell_z
+                             + magnet_dumbbell_x + magnet_dumbbell_y + magnet_dumbbell_z + roll_forearm
+                             + pitch_forearm + yaw_forearm + total_accel_forearm + gyros_forearm_x
+                             + gyros_forearm_y + gyros_forearm_z + accel_forearm_x + accel_forearm_y
+                             + accel_forearm_z + magnet_forearm_x + magnet_forearm_y + magnet_forearm_z
+                      , data=training.train, method="rf", importance = TRUE 
+                      , trControl = trainControl(method = "cv", number = 4))
+```
+##Evaluation
+###The initial model
+```{r echo=TRUE, cache=FALSE, collapse=TRUE}
+modelFit
+```
+###Variables importance of the initial model
+```{r echo=TRUE, cache=FALSE, collapse=TRUE}
+varImp(modelFit)
+```
+###Prediction and confusion matrix of the initial model
+```{r echo=TRUE, cache=FALSE, collapse=TRUE}
+training.prediction <- predict(modelFit, newdata=training.test)
+confusionMatrix(training.prediction,training.test$classe)
+```
+###Conclusion over the initial model
+The model obtained is very high accurate and the variables importance showed permits us to reduce the number of columns used in the model to get better performance (time consumed).
+
+##Final Model
+###The model
+Now let's create the final model using only the 20 most important variables showed above to achieve better performance:
+```{r echo=TRUE, cache=TRUE, collapse=TRUE}
+set.seed(32343)
+modelFit    <- train(classe ~ roll_belt + pitch_forearm + pitch_belt + magnet_dumbbell_y 
+                     + magnet_dumbbell_z + yaw_belt + accel_forearm_x + roll_forearm
+                     + accel_dumbbell_y + yaw_arm + gyros_belt_z + gyros_dumbbell_y
+                     + accel_dumbbell_z + magnet_belt_x + magnet_belt_z + magnet_forearm_z
+                     + roll_dumbbell + gyros_arm_y + magnet_arm_z + magnet_belt_y
+                     , data=training.train, method="rf", importance = TRUE 
+                     , trControl = trainControl(method = "cv", number = 4))
+```
+###Evaluation of the final model
+####Model
+```{r echo=TRUE, cache=FALSE, collapse=TRUE}
+modelFit
+```
+####Variables importance of the final model
+```{r echo=TRUE, cache=FALSE, collapse=TRUE}
+varImp(modelFit)
+```
+####Prediction
+```{r echo=TRUE, cache=FALSE, collapse=TRUE}
+final.prediction <- predict(modelFit, newdata=testing)
+final.prediction
+
+```
+###Answer to the initial question
+The question to answer is: "**is it possible to predict if people did exercises correctly based on previous classification done by experts ?**".
+
+As we can read in the http://groupware.les.inf.puc-rio.br/har page, "six young health participants were asked to perform one set of 10 repetitions of the Unilateral Dumbbell Biceps Curl in five different fashions: **exactly according to the specification (Class A)**, throwing the elbows to the front (Class B), lifting the dumbbell only halfway (Class C), lowering the dumbbell only halfway (Class D) and throwing the hips to the front (Class E)".
+
+We can see bellow that it is possible to predict if people did exercises correctly based on previous classification done by experts:
+```{r echo=TRUE, cache=FALSE, collapse=TRUE}
+testing$classe <- final.prediction
+testing$compliance <- sapply(testing$classe, function(x){if (x=="A") {"Correctly"} else {"Incorrectly"}})
+print(paste(testing$problem_id, testing$classe, testing$compliance))
